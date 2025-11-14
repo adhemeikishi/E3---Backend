@@ -1,0 +1,61 @@
+REPONSES AUX QUESTIONS - MEDITRACK CORE
+
+Question 1 : 
+Alors pour l'encapsulation, en gros c'est le fait de bien séparer les différentes parties du code et de pas tout mélanger. Dans mon projet j'ai fait ça avec l'architecture MVC.
+Pour les produits par exemple, j'ai mis toute la logique dans le contrôleur produitController.js. Comme ça quand on appelle l'API avec /produits, l'utilisateur il sait pas ce qui se passe derrière. Il envoie juste son JSON et il reçoit une réponse, point. Il voit pas les requêtes SQL ni comment je me connecte à la base.
+J'ai aussi mis la config de PostgreSQL dans un fichier à part (config/postgres.js), comme ça si je dois changer quelque chose dans la connexion je touche qu'à un seul endroit.
+Pour les validations genre vérifier que la quantité est positive ou que le code existe pas déjà, tout est dans le contrôleur. Du coup le reste du code a pas besoin de savoir comment ça marche, il appelle juste la fonction et ça se fait automatiquement.
+En gros l'idée c'est de cacher la complexité et de rendre le code plus simple à maintenir.
+
+
+Question 2 : 
+Bon alors j'ai utilisé PostgreSQL pour les mouvements et les produits parce que c'est des données super importantes où on peut pas se permettre d'erreurs. Genre si on fait un mouvement de stock, il faut que la quantité se mette à jour en même temps, sinon c'est le bordel. PostgreSQL il gère bien ça avec les transactions, si y'a un problème tout est annulé.En plus avec SQL c'est facile de faire des jointures pour avoir l'historique des mouvements par produit ou par dépôt. Et les contraintes de base (genre type IN ou OUT uniquement) sont vérifiées automatiquement.
+Pour MongoDB j'ai pris ça pour la cartographie des dépôts parce que chaque dépôt c'est différent. Y'en a qui ont 5 zones, d'autres 20, avec des nombres de bacs variables etc. Avec MongoDB je peux stocker tout ça en JSON sans devoir créer 50 tables différentes.
+En gros : SQL pour les trucs rigides et critiques, NoSQL pour les trucs flexibles et hiérarchiques.
+
+
+Question 3 :
+Les attaques CSRF c'est quand un site malveillant fait faire des actions à quelqu'un qui est connecté sans qu'il s'en rende compte.
+Pour protéger MediTrack je ferais plusieurs trucs :
+D'abord les tokens CSRF. On génère un token random pour chaque session et on le vérifie à chaque requête qui modifie des données. Y'a le package csurf qui fait ça bien. On l'installe avec npm et on l'active dans server.js.
+Ensuite je configurerais les cookies avec SameSite en mode strict. Comme ça les cookies sont pas envoyés si la requête vient d'un autre site.
+Je mettrais aussi CORS de manière restrictive, en autorisant seulement l'origine de mon front-end. Pas de wildcard (*) qui laisse tout passer.
+Et puis helmet.js pour ajouter plein de headers de sécurité automatiquement.
+Franchement le plus important c'est le token CSRF et les cookies SameSite, ça couvre déjà pas mal de cas.
+
+
+Question 4 :
+
+Dans la doc Swagger il faut mettre :
+
+- Un résumé clair : "Enregistrer un mouvement de stock"
+- Une description qui explique que ça crée le mouvement ET met à jour le stock en même temps
+- Les paramètres requis : type (IN ou OUT), quantite (nombre positif), produit_id
+- Des exemples concrets de requêtes, genre un exemple d'entrée et un de sortie
+- Tous les codes de retour possibles :
+  * 201 si tout va bien avec la structure de la réponse
+  * 400 pour les erreurs de validation (type invalide, quantité négative, stock insuffisant etc)
+  * 404 si le produit existe pas
+  * 500 pour les erreurs serveur
+- Pour chaque erreur, mettre un exemple de message qu'on peut recevoir
+- Le format exact de la réponse en cas de succès avec tous les champs
+
+En gros faut que quelqu'un qui lit la doc puisse utiliser l'endpoint sans poser de questions.
+
+
+Question 5 : 
+Pour tester POST /mouvements correctement, je ferais un scénario complet :
+Déjà je prépare ma base de test avec un dépôt et un produit qui a 100 en stock.
+
+Premier test : je fais une entrée de 50. Je vérifie que ça retourne 201, que le mouvement est bien créé avec les bonnes infos, et surtout que le stock est passé à 150. Je vais vérifier en faisant un GET sur le produit après.
+
+Deuxième test : je fais une sortie de 30. Même principe, je vérifie que le stock descend bien à 120.
+
+Troisième test (le plus important) : j'essaie de sortir 200 alors qu'il en reste que 120. Là ça doit planter avec une erreur 400 qui dit que le stock est insuffisant. Et je vérifie bien que le stock a PAS bougé et qu'aucun mouvement a été créé.
+
+Quatrième test : je teste les validations. Type invalide, quantité négative, quantité à zéro, champs manquants... Tout ça doit retourner 400 avec un message d'erreur.
+
+Cinquième test : j'essaie avec un produit_id qui existe pas, ça doit retourner 404.
+
+Et le dernier test c'est pour vérifier la transaction. Si jamais y'a un problème pendant la mise à jour du stock, le mouvement doit pas être créé non plus. Tout doit être annulé.
+Pour faire ça j'utiliserais Jest avec Supertest pour faire les requêtes HTTP. Et une base de données de test que je reset entre chaque test pour repartir sur des bases propres.
